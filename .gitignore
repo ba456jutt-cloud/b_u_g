@@ -1,0 +1,73 @@
+# ─── Secrets / Environment ──────────────────────────────
+.env
+*.env
+.env.*
+secrets.json
+config/secrets.py
+
+# ─── Python ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ─── Virtual Environment ────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ─── SQLite / Database ──────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── Logs & Temp Files ──────────────────────────────────
+*.log
+*.tmp
+/tmp/
+.cache/
+audit_log.json
+
+# ─── Node / Next.js ─────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.production.local
+node_modules/
+
+# ─── OS / IDE ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Nuclei / Security Tool Output ───────────────────────
+nuclei-templates/
+/tmp/discovery_cache.json
+/tmp/theharvester_output*
+*.xml
+*.nmap
+
+# ─── Misc ────────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.bak
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+patch.log
+patch.py
+security_patches.sh
+workflows/
