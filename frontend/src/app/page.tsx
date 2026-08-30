@@ -68,23 +68,34 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const safeFetchJson = async (url: string) => {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return {};
+        const text = await r.text();
+        return text.startsWith('{') || text.startsWith('[') ? JSON.parse(text) : {};
+      } catch {
+        return {};
+      }
+    };
+
     const fetchDashboardData = async () => {
       try {
         const [agentsRes, findingsRes, memRes, tasksRes, statsRes] = await Promise.all([
-          fetch('/api/backend?path=agents').then(r => r.json()),
-          fetch('/api/backend?path=findings').then(r => r.json()),
-          fetch('/api/backend?path=memory').then(r => r.json()),
-          fetch('/api/backend?path=tasks/active').then(r => r.json()),
-          fetch('/api/backend?path=stats').then(r => r.json()),
+          safeFetchJson('/api/backend?path=agents'),
+          safeFetchJson('/api/backend?path=findings'),
+          safeFetchJson('/api/backend?path=memory'),
+          safeFetchJson('/api/backend?path=tasks/active'),
+          safeFetchJson('/api/backend?path=stats'),
         ]);
 
         setBasicStats({
-          agents: agentsRes.agents?.length || 0,
-          findings: findingsRes.findings?.length || 0,
-          memory: memRes.record_counts ? (memRes.record_counts.session_logs + memRes.record_counts.key_findings) : 0,
+          agents: agentsRes?.agents?.length || 0,
+          findings: findingsRes?.findings?.length || 0,
+          memory: memRes?.record_counts ? (memRes.record_counts.session_logs + memRes.record_counts.key_findings) : 0,
         });
-        setTasks(tasksRes.tasks || []);
-        setStats(statsRes);
+        setTasks(tasksRes?.tasks || []);
+        setStats(statsRes && Object.keys(statsRes).length > 0 ? statsRes : null);
       } catch (error) {
         console.error("Failed to load dashboard data", error);
       } finally {
