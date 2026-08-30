@@ -104,7 +104,7 @@ export default function LiveTaskConsole() {
   // Group logs into step blocks for interactive view
   const parseStepGroups = (): StepGroup[] => {
     const groups: StepGroup[] = [];
-    let currentGroup: Partial<StepGroup> | null = null;
+    let currentGroup: any = null;
     let stepCount = 0;
 
     logs.forEach((log) => {
@@ -122,9 +122,10 @@ export default function LiveTaskConsole() {
           action: log.log_type === 'Action' ? log.content : undefined,
         };
       } else if (currentGroup) {
-        if (log.log_type === 'Thought') currentGroup.thought = log.content;
-        if (log.log_type === 'Action') currentGroup.action = log.content;
-        if (log.log_type === 'Observation') {
+        const typeStr = log.log_type as string;
+        if (typeStr === 'Thought') currentGroup.thought = log.content;
+        if (typeStr === 'Action') currentGroup.action = log.content;
+        if (typeStr === 'Observation') {
           currentGroup.observation = log.content;
           currentGroup.status = 'completed';
         }
