@@ -1,0 +1,76 @@
+name: Run Autonomous Agent Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target URL or domain to audit (e.g. https://example.com)'
+        required: true
+        default: 'https://example.com'
+      workflow:
+        description: 'Workflow pipeline to run'
+        required: true
+        default: 'full audit'
+        type: choice
+        options:
+          - 'full audit'
+          - 'reconnaissance'
+          - 'subdomain discovery'
+          - 'web enumeration'
+          - 'cve analysis'
+          - 'vulnerability'
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install System Security Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nmap gobuster whatweb theharvester wpscan nikto 2>/dev/null || true
+
+      - name: Install Go Security Tools
+        run: |
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true
+          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest || true
+          go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest || true
+          go install github.com/hahwul/dalfox/v2@latest || true
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Update Nuclei Vulnerability Templates
+        run: |
+          nuclei -update-templates || true
+
+      - name: Run Multi-Agent Bot Pipeline
+        env:
+          GEMINI_API_KEYs: ${{ secrets.GEMINI_API_KEYS }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          GROQ_API_KEYS: ${{ secrets.GROQ_API_KEYS }}
+          MISTRAL_API_KEYS: ${{ secrets.MISTRAL_API_KEYS }}
+        run: |
+          python3 cli.py "${{ github.event.inputs.target }}" --workflow "${{ github.event.inputs.workflow }}"
+
+      - name: Upload Audit Reports & Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-audit-results
+          path: |
+            memory/*.db
+            /tmp/discovery_cache.json
+            *.pdf

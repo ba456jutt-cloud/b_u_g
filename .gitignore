@@ -70,4 +70,4 @@ coverage.xml
 patch.log
 patch.py
 security_patches.sh
-workflows/
+/workflows/
