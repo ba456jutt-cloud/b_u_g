@@ -787,14 +787,79 @@ class MLScanEngine:
             if key in service_lower:
                 return score
 
-        # Banner keyword-based adjustments
-        banner_lower = (banner or "").lower()
-        if any(x in banner_lower for x in ["proftp", "proftpd"]):
-            return KNOWN_VULN_SCORES["proftp"]
-        if "exim" in banner_lower:
-            return KNOWN_VULN_SCORES["exim"]
-
         return KNOWN_VULN_SCORES["default"]
+
+    # ═══════════════════════════════════════════════════════════
+    # MULTI-TOOL ML PREDICTION HELPERS
+    # ═══════════════════════════════════════════════════════════
+    def _predict_waf_tech(self, results: dict) -> dict:
+        """Predict WAF type & Web Framework using WafPredictor model."""
+        if hasattr(self, "_waf_predictor") and self._waf_predictor is not None:
+            try:
+                from scipy.sparse import hstack, csr_matrix
+                server = results.get("services", {}).get("80", {}).get("banner", "")
+                server_feat = self._waf_tfidf.transform([server or ""])
+                num_feat = csr_matrix([[200, 1 if results.get("firewall_detected") else 0, 5000]])
+                X = hstack([server_feat, num_feat])
+                pred_idx = self._waf_predictor.predict(X)[0]
+                waf = self._waf_le.inverse_transform([pred_idx])[0]
+                return {"waf_detected": waf, "confidence": 0.95}
+            except Exception as e:
+                logger.debug(f"[WafPredictor] ML failed: {e}")
+        return {"waf_detected": results.get("firewall_type", "none"), "confidence": 0.8}
+
+    def _predict_web_fuzz(self, results: dict) -> dict:
+        """Predict optimal directory fuzzing tool (gobuster/ffuf/feroxbuster) and wordlist."""
+        if hasattr(self, "_fuzz_optimizer") and self._fuzz_optimizer is not None:
+            try:
+                from scipy.sparse import hstack
+                fw_feat = self._fuzz_tfidf_fw.transform(["WordPress"])
+                waf_feat = self._fuzz_tfidf_waf.transform([results.get("firewall_type", "none")])
+                X = hstack([fw_feat, waf_feat])
+                pred_idx = self._fuzz_optimizer.predict(X)[0]
+                tool = self._fuzz_le.inverse_transform([pred_idx])[0]
+                return {
+                    "recommended_tool": tool,
+                    "recommended_wordlist": "common.txt" if tool == "gobuster" else "directory-list-2.3-medium.txt",
+                    "recommended_extensions": ".php,.html,.json"
+                }
+            except Exception as e:
+                logger.debug(f"[WebFuzzOptimizer] ML failed: {e}")
+        return {
+            "recommended_tool": "ffuf" if results.get("firewall_detected") else "gobuster",
+            "recommended_wordlist": "common.txt",
+            "recommended_extensions": ".php,.html"
+        }
+
+    def _predict_nuclei_tags(self, results: dict) -> dict:
+        """Predict optimal Nuclei vulnerability template tags."""
+        if hasattr(self, "_nuclei_tag_selector") and self._nuclei_tag_selector is not None:
+            try:
+                from scipy.sparse import hstack, csr_matrix
+                svc_feat = self._nuclei_tfidf_svc.transform(["http"])
+                num_feat = csr_matrix([[80]])
+                X = hstack([svc_feat, num_feat])
+                pred_idx = self._nuclei_tag_selector.predict(X)[0]
+                tags = self._nuclei_le.inverse_transform([pred_idx])[0]
+                return {"recommended_tags": tags, "confidence": 0.84}
+            except Exception as e:
+                logger.debug(f"[NucleiTagSelector] ML failed: {e}")
+        return {"recommended_tags": "cve,panel,exposure", "confidence": 0.8}
+
+    def _predict_sqli_tamper(self, results: dict) -> dict:
+        """Predict SQLmap tamper script for WAF bypass."""
+        if hasattr(self, "_sqli_tamper_scorer") and self._sqli_tamper_scorer is not None:
+            try:
+                from scipy.sparse import hstack
+                db_feat = self._sqli_tfidf_db.transform(["MySQL"])
+                waf_feat = self._sqli_tfidf_waf.transform([results.get("firewall_type", "none")])
+                X = hstack([db_feat, waf_feat])
+                pred_idx = self._sqli_tamper_scorer.predict(X)[0]
+                tamper = self._sqli_le.inverse_transform([pred_idx])[0]
+                return {"recommended_tamper": tamper, "recommended_risk": 2, "recommended_level": 3}
+            except Exception as e:
+                logger.debug(f"[SqliTamperScorer] ML failed: {e}")
+        return {"recommended_tamper": "space2comment", "recommended_risk": 2, "recommended_level": 3}
 
     # ═══════════════════════════════════════════════════════════
     # UTILS
