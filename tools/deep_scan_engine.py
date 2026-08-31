@@ -140,14 +140,20 @@ class DeterministicScanningEngine:
 
         if shutil.which("nmap"):
             try:
-                # Fast scan top ports with -Pn (bypass ICMP block)
-                cmd = ["nmap", "-Pn", "-T4", "--top-ports", "100", "-sV", "--open", host]
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                # Use -sT (connect scan) for non-root users; -sS (SYN scan) needs root/CAP_NET_RAW
+                scan_type = "-sS" if os.getuid() == 0 else "-sT"
+                # Scan top-1000 ports for better coverage (top-100 misses 99.8% of ports)
+                cmd = ["nmap", "-Pn", "-T4", scan_type, "--top-ports", "1000", "-sV", "--open", host]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
                 stdout = res.stdout or ""
 
-                # If filtered / blocked, try evasion flags (-g 53)
+                # If filtered / blocked, try evasion with source port 53 (DNS)
                 if "0 ports open" in stdout or "filtered" in stdout:
-                    cmd_evade = ["nmap", "-Pn", "-sS", "-g", "53", "-p", "21,22,25,53,80,111,135,139,443,445,1433,3306,3389,8080,8443", "-sV", host]
+                    cmd_evade = [
+                        "nmap", "-Pn", scan_type, "-g", "53",
+                        "-p", "21,22,23,25,53,69,80,110,111,135,139,143,443,445,587,993,995,1433,1521,3306,3389,5432,5900,6379,8080,8443,8888,27017",
+                        "-sV", host
+                    ]
                     res = subprocess.run(cmd_evade, capture_output=True, text=True, timeout=120)
                     stdout = res.stdout or ""
 
@@ -229,8 +235,12 @@ class DeterministicScanningEngine:
         
         data = {"url": target_url}
         try:
+            # Realistic User-Agent to avoid WAF blocking (SecurityBot/1.0 triggers WAF blocklists)
+            _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/124.0.0.0 Safari/537.36")
             resp = requests.get(target_url, timeout=8, verify=False, allow_redirects=True,
-                                headers={"User-Agent": "Mozilla/5.0 SecurityBot/1.0"})
+                                headers={"User-Agent": _UA})
             data["status_code"] = resp.status_code
             data["server"] = resp.headers.get("Server", "Unknown")
             data["x_powered_by"] = resp.headers.get("X-Powered-By", "Not Disclosed")
@@ -279,25 +289,36 @@ class DeterministicScanningEngine:
         except Exception as e:
             return f"MySQL check error: {e}"
 
-    def _write_cache(self, data: dict):
-        cache_path = "/tmp/discovery_cache.json"
-        try:
-            existing = {}
-            if os.path.exists(cache_path):
-                with open(cache_path, "r") as f:
-                    existing = json.load(f)
-            
-            existing.update({
-                "ip": data.get("ip_address"),
-                "domain": data.get("domain"),
-                "url": data.get("url"),
-                "open_ports": data.get("open_ports"),
-                "services": data.get("services"),
-                "enumeration": data.get("enumeration"),
-                "stage1_complete": True
-            })
+    def _write_cache(self, data: dict, task_id: str = "global"):
+        """Write Stage 1 discovery results to a task-scoped cache file.
+        Using task_id prevents concurrent scans from overwriting each other's cache.
+        Also writes to the legacy shared path for backward compatibility.
+        """
+        # Task-scoped cache path (FIXED: was shared /tmp/discovery_cache.json)
+        safe_task_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(task_id))[:40]
+        task_cache_path = f"/tmp/discovery_cache_{safe_task_id}.json"
+        # Also update the legacy shared path for tools that haven't migrated yet
+        legacy_cache_path = "/tmp/discovery_cache.json"
 
-            with open(cache_path, "w") as f:
-                json.dump(existing, f, indent=2)
-        except Exception as e:
-            print(f"[DeterministicEngine] Error writing cache: {e}")
+        payload = {
+            "task_id": task_id,
+            "ip": data.get("ip_address"),
+            "domain": data.get("domain"),
+            "url": data.get("url"),
+            "open_ports": data.get("open_ports"),
+            "services": data.get("services"),
+            "enumeration": data.get("enumeration"),
+            "stage1_complete": True
+        }
+
+        for cache_path in [task_cache_path, legacy_cache_path]:
+            try:
+                existing = {}
+                if os.path.exists(cache_path):
+                    with open(cache_path, "r") as f:
+                        existing = json.load(f)
+                existing.update(payload)
+                with open(cache_path, "w") as f:
+                    json.dump(existing, f, indent=2)
+            except Exception as e:
+                print(f"[DeterministicEngine] Error writing cache {cache_path}: {e}")

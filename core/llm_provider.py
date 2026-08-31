@@ -3,6 +3,7 @@ import time
 import logging
 import os
 import re
+import threading
 from abc import ABC, abstractmethod
 import google.generativeai as genai
 from pydantic import BaseModel, Field
@@ -51,6 +52,43 @@ class LLMProvider(ABC):
             return float(m.group(1))
         return default
 
+
+    @staticmethod
+    def _extract_last_json_object(text: str) -> str:
+
+        """Use bracket-counting to find ALL top-level JSON objects and return the LAST complete one.
+        This fixes the greedy regex bug where reasoning containing JSON examples
+        (e.g. 'test {\"id\": 1}') caused wrong extraction.
+        """
+        candidates = []
+        depth = 0
+        start = -1
+        in_string = False
+        escape_next = False
+
+        for i, ch in enumerate(text):
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start != -1:
+                    candidates.append(text[start:i + 1])
+                    start = -1
+        return candidates[-1] if candidates else ""
+
     @staticmethod
     def _clean_and_parse_json(raw_text: str) -> dict:
         """Robustly parse JSON from raw LLM text output, handling markdown fences and surrounding text."""
@@ -58,12 +96,17 @@ class LLMProvider(ABC):
             return {"thought": "Empty LLM output", "action": "none", "result": ""}
 
         clean = raw_text.strip()
+
         # Strip markdown fences if present
         if "```" in clean:
-            clean = re.sub(r'^```(?:json)?\s*', '', clean, flags=re.IGNORECASE)
-            clean = re.sub(r'\s*```$', '', clean)
-        clean = clean.strip()
+            fence_match = re.search(r'```(?:json)?\s*(.*?)\s*```', clean, re.DOTALL | re.IGNORECASE)
+            if fence_match:
+                clean = fence_match.group(1).strip()
+            else:
+                clean = re.sub(r'^```(?:json)?\s*', '', clean, flags=re.IGNORECASE)
+                clean = re.sub(r'\s*```$', '', clean).strip()
 
+        # Attempt 1: Direct parse of the entire cleaned string
         try:
             parsed = json.loads(clean)
             if isinstance(parsed, dict):
@@ -71,8 +114,19 @@ class LLMProvider(ABC):
         except Exception:
             pass
 
-        # Regex fallback to extract first JSON object {...}
-        match = re.search(r'\{.*\}', clean, re.DOTALL)
+        # Attempt 2: Balanced-bracket extraction — finds the LAST complete JSON object
+        # This correctly handles LLM reasoning that contains JSON examples inline
+        last_obj = LLMProvider._extract_last_json_object(clean)
+        if last_obj:
+            try:
+                parsed = json.loads(last_obj)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+
+        # Attempt 3: Simple regex fallback — first JSON block (for simple cases)
+        match = re.search(r'\{[^{}]*"action"[^{}]*\}', clean, re.DOTALL)
         if match:
             try:
                 parsed = json.loads(match.group(0))
@@ -81,7 +135,19 @@ class LLMProvider(ABC):
             except Exception:
                 pass
 
-        # Fallback dictionary if JSON parsing failed
+        # Attempt 4: If result contains 'action' keyword, try extracting it manually
+        if '"action"' in raw_text or "'action'" in raw_text:
+            action_match = re.search(r'"action"\s*:\s*"([^"]+)"', raw_text)
+            result_match = re.search(r'"result"\s*:\s*"([^"]*)"', raw_text, re.DOTALL)
+            thought_match = re.search(r'"thought"\s*:\s*"([^"]*)"', raw_text, re.DOTALL)
+            if action_match:
+                return {
+                    "thought": thought_match.group(1) if thought_match else "Extracted from partial JSON",
+                    "action": action_match.group(1),
+                    "result": result_match.group(1) if result_match else raw_text[:2000]
+                }
+
+        # Final fallback: return raw text as result with action=none
         return {
             "thought": "Analysis generated",
             "action": "none",
@@ -246,6 +312,9 @@ class GeminiProvider(LLMProvider):
         self.keys = [k.strip().strip('"').strip("'") for k in raw.split(",") if k.strip()]
         self.model_name = getattr(settings, 'DEFAULT_MODEL', 'gemini-2.5-flash')
         self.current_idx = 0
+        # Thread-safety lock: genai.configure() mutates GLOBAL library state.
+        # Without this lock, concurrent threads rotating keys overwrite each other.
+        self._genai_lock = threading.Lock()
 
     def generate(self, prompt: str) -> dict:
         return self._cached_generate(prompt, self._do_generate)
@@ -284,12 +353,15 @@ class GeminiProvider(LLMProvider):
             self.current_idx += 1
 
             try:
-                genai.configure(api_key=key)
-                model = genai.GenerativeModel(
-                    model_name=self.model_name,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                resp = model.generate_content(prompt)
+                # FIXED: genai.configure() mutates global library state.
+                # Use a lock so only one thread at a time configures+generates.
+                with self._genai_lock:
+                    genai.configure(api_key=key)
+                    model = genai.GenerativeModel(
+                        model_name=self.model_name,
+                        generation_config={"response_mime_type": "application/json"}
+                    )
+                    resp = model.generate_content(prompt)
                 return self._clean_and_parse_json(resp.text)
 
             except Exception as e:

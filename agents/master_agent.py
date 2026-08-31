@@ -96,19 +96,37 @@ class MasterAgent(BaseAgent):
 
     def _build_planning_prompt(self, task: str) -> str:
         agent_descriptions = "\n".join([
+            "- InitialDiscoveryAgent: Stage 1 deterministic engine. DNS, WHOIS, IP info, open ports, banners, service fingerprinting.",
+            "- ScopeManagementAgent: Validates targets are in-scope. Blocks out-of-scope IP/domain attacks.",
+            "- PassiveReconAgent: OSINT. crt.sh, Shodan, SecurityTrails, subdomain enumeration via Subfinder/Amass.",
+            "- DNSIntelligenceAgent: DNS deep-dive. Zone transfers, DNSSEC, SPF/DKIM/DMARC, DNS recon.",
             "- ReconAnalysisAgent: Active reconnaissance. Nmap port scans, web_security_audit, SSL checks, banner grabbing, Gobuster directory enum.",
+            "- AliveHostAgent: Pings and HTTP probes to confirm which hosts/subdomains are actually alive.",
+            "- PortScanAgent: Deep port scanning. UDP/TCP sweep, service version detection.",
+            "- WebCrawlingAgent: Spider target web application. Extracts endpoints, forms, JS references, hidden paths.",
+            "- JSAnalysisAgent: Analyzes JavaScript files for secrets, API keys, hardcoded credentials, hidden endpoints.",
+            "- ParamDiscoveryAgent: Discovers GET/POST parameters. Feeds data to fuzzing and injection agents.",
+            "- DirectoryEnumAgent: Brute-forces directories/files using Gobuster, FFUF, Feroxbuster.",
+            "- VulnerabilityAnalysisAgent: Impact assessment. Scores findings by CVSS, maps attack vectors, prioritizes by business risk.",
             "- CVEResearchAgent: Threat intel. Uses nvd_cve_lookup to find real CVE IDs and CVSS scores for identified software versions.",
-            "- CodeReviewAgent: SAST. Analyzes source code for injection flaws, auth bypass, and logic vulnerabilities.",
-            "- VulnerabilityAnalysisAgent: Impact assessment. Scores findings by CVSS, maps attack vectors, and prioritizes by business risk.",
+            "- AttackChainAgent: Chains low/medium findings into critical-impact attack sequences. Generates non-destructive PoC code.",
+            "- PatchGeneratorAgent: Generates security patches and secure code replacements for identified vulnerabilities.",
+            "- EvidenceAgent: Collects and organizes raw evidence (screenshots, response dumps, payloads) for report attachments.",
+            "- DeduplicationAgent: Removes duplicate findings. Merges overlapping vulnerabilities before reporting.",
             "- ReportAgent: Executive reporting. Generates structured professional security reports from all gathered data.",
-            "- GeneralToolBuilderAgent: Exploit & tool dev. Writes Python PoC exploits or custom security tools for identified vulnerabilities.",
+            "- NotificationAgent: Sends alerts and findings to Slack, email, or webhook endpoints.",
+            "- AuditLogAgent: Creates a final immutable audit log of all steps taken during the engagement.",
+            "- CodeReviewAgent: SAST. Analyzes source code for injection flaws, auth bypass, and logic vulnerabilities.",
             "- SecurityKnowledgeAgent: Defensive consulting. Provides OWASP mitigations and secure coding guidance.",
+            "- GeneralToolBuilderAgent: Exploit & tool dev. Writes Python PoC exploits or custom security tools for identified vulnerabilities.",
+            "- PoCVerificationAgent: Verifies that PoC exploits work against the target and classifies the actual impact.",
+            "- CTFSolverAgent: Specialized for CTF challenges. Flag extraction, cipher analysis, steganography, binary exploitation.",
         ])
         available_names = ", ".join(self.available_agents.keys())
         return f"""You are the Elite Master Security Orchestrator.
 Task: "{task}"
 
-Your available specialized agents:
+Your available specialized agents (use EXACT names):
 {agent_descriptions}
 
 Currently initialized: {available_names}
@@ -120,6 +138,7 @@ Respond with JSON:
 - action: The EXACT agent name to delegate to (e.g. 'ReconAnalysisAgent'), or 'none' if task is complete.
 - result: Specific detailed instructions for the chosen agent. Include: exact target, what tools to use, what specific data to collect.
 """
+
 
     def _build_chaining_prompt(self, original_task: str, phase_num: int,
                                 agent_name: str, agent_output: str, pipeline_remaining: list,

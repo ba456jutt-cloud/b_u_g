@@ -1,0 +1,143 @@
+name: Agent Unit Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install System Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nmap gobuster whatweb theharvester wpscan nikto 2>/dev/null || true
+
+      - name: Install Go Tools
+        run: |
+          go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true
+          go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest || true
+          go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest || true
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Agent Import Tests
+        run: |
+          python3 -c "
+          import sys, importlib
+          sys.path.insert(0, '.')
+          from unittest.mock import MagicMock
+          from tools.registry import registry
+
+          mock_provider = MagicMock()
+          mock_provider.generate.return_value = '{\"thought\": \"done\", \"action\": \"none\", \"result\": \"test\"}'
+          mock_memory = MagicMock()
+          mock_memory.get_reflections.return_value = []
+          mock_memory.get_agent_performance.return_value = {}
+          mock_memory.get_active_findings.return_value = []
+          tools = registry.get_all_active_tools()
+
+          agents = [
+              ('agents.recon_agent', 'ReconAnalysisAgent'),
+              ('agents.host_port_agents', 'AliveHostAgent'),
+              ('agents.host_port_agents', 'PortScanAgent'),
+              ('agents.web_enum_agents', 'WebCrawlingAgent'),
+              ('agents.passive_dns_agents', 'PassiveReconAgent'),
+              ('agents.cve_agent', 'CVEResearchAgent'),
+              ('agents.report_agent', 'ReportAgent'),
+              ('agents.scope_agent', 'ScopeManagementAgent'),
+              ('agents.tool_builder_agent', 'GeneralToolBuilderAgent'),
+              ('agents.vulnerability_analysis_agent', 'VulnerabilityAnalysisAgent'),
+              ('agents.initial_discovery_agent', 'InitialDiscoveryAgent'),
+              ('agents.attack_chain_agent', 'AttackChainAgent'),
+              ('agents.poc_agent', 'PoCVerificationAgent'),
+          ]
+
+          ok, fail = [], []
+          for mod_name, cls_name in agents:
+              try:
+                  mod = importlib.import_module(mod_name)
+                  cls = getattr(mod, cls_name)
+                  agent = cls(mock_provider, mock_memory, registry, list(tools.values()))
+                  ok.append(cls_name)
+                  print(f'  PASS: {cls_name}')
+              except Exception as e:
+                  fail.append(cls_name)
+                  print(f'  FAIL: {cls_name}: {e}')
+
+          print(f'Results: {len(ok)}/{len(agents)} passed')
+          if fail:
+              print(f'FAILED: {fail}')
+              sys.exit(1)
+          "
+
+      - name: Run Tool Import Tests
+        run: |
+          python3 -c "
+          import sys, importlib, glob
+          sys.path.insert(0, '.')
+          fail = []
+          for f in glob.glob('tools/**/*.py', recursive=True):
+              if '__pycache__' in f or '__init__' in f:
+                  continue
+              mod_name = f.replace('/', '.').replace('.py', '')
+              try:
+                  importlib.import_module(mod_name)
+              except Exception as e:
+                  fail.append(f'{mod_name}: {e}')
+          if fail:
+              for f in fail:
+                  print(f'  FAIL: {f}')
+              sys.exit(1)
+          else:
+              print('All tools imported successfully')
+          "
+
+      - name: Run PreReconEngine Test
+        run: |
+          python3 -c "
+          import sys
+          sys.path.insert(0, '.')
+          from tools.pre_recon import PreReconEngine
+          engine = PreReconEngine('https://example.com')
+          print('PreReconEngine instantiated OK')
+          print(f'Domain: {engine.clean_domain}')
+          assert engine.clean_domain == 'example.com', f'Expected example.com, got {engine.clean_domain}'
+          print('Domain parsing: PASS')
+          "
+
+      - name: Syntax Check All Python Files
+        run: |
+          python3 -c "
+          import py_compile, glob, sys
+          errors = []
+          for f in glob.glob('**/*.py', recursive=True):
+              if 'venv/' in f or '__pycache__' in f:
+                  continue
+              try:
+                  py_compile.compile(f, doraise=True)
+              except Exception as e:
+                  errors.append(f'{f}: {e}')
+          if errors:
+              for e in errors:
+                  print(e)
+              sys.exit(1)
+          else:
+              print(f'All Python files syntax OK')
+          "

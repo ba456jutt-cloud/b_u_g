@@ -117,6 +117,24 @@ def list_agents():
     # Dynamically list registered agents from the package
     return {"agents": available_agents}
 
+@app.get("/tasks")
+def list_all_tasks():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT task_id, MIN(timestamp) as started_at, MAX(timestamp) as last_updated, 
+                   (SELECT content FROM execution_logs e2 WHERE e2.task_id = e1.task_id ORDER BY id ASC LIMIT 1) as task_name
+            FROM execution_logs e1 
+            GROUP BY task_id 
+            ORDER BY last_updated DESC LIMIT 20
+        ''')
+        tasks = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return {"tasks": tasks}
+    except Exception:
+        return {"tasks": []}
+
 @app.post("/tasks")
 def submit_task(req: TaskRequest):
     import uuid

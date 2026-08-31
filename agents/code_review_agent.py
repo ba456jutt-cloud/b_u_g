@@ -1,4 +1,5 @@
 import json
+import hashlib
 from agents.base_agent import BaseAgent
 
 class CodeReviewAgent(BaseAgent):
@@ -36,5 +37,5 @@ Respond with a JSON object containing:
     def run(self, task: str, max_steps: int = 8, task_id: str = "local-test"):
         final_output = super().run(task, max_steps=max_steps, task_id=task_id)
         if final_output and isinstance(final_output, str) and not final_output.startswith("Error"):
-            self.memory.save_finding(f"code_review_{hash(task)}", final_output)
+            self.memory.save_finding(f"code_review_{hashlib.sha256(task.encode()).hexdigest()[:16]}", final_output, task_id=task_id)
         return final_output

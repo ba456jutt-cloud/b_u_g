@@ -12,7 +12,8 @@ class ScopeManagementAgent(BaseAgent):
 
         # Check out-of-scope blacklists first
         for oos in out_of_scope_rules:
-            pattern = "^" + re.escape(oos).replace(r"\*", ".*") + "$"
+            clean_oos = oos.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+            pattern = "^" + re.escape(clean_oos).replace(r"\*", ".*") + "$"
             if re.match(pattern, clean_target):
                 return {
                     "allowed": False,
@@ -25,7 +26,8 @@ class ScopeManagementAgent(BaseAgent):
             return {"allowed": True, "target": clean_target, "note": "Wildcard/No restriction"}
 
         for allowed in allowed_rules:
-            pattern = "^" + re.escape(allowed).replace(r"\*", ".*") + "$"
+            clean_allowed = allowed.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+            pattern = "^" + re.escape(clean_allowed).replace(r"\*", ".*") + "$"
             if re.match(pattern, clean_target):
                 return {"allowed": True, "target": clean_target, "matched_rule": allowed}
 

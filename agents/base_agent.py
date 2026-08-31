@@ -71,8 +71,8 @@ class BaseAgent:
         score_str = f"+{score}" if score >= 0 else str(score)
         return f"CURRENT REWARD RATING: Score: {score_str} | Efficiency: {eff}% ({succ} Success / {pen} Penalties)\n"
 
-    def _get_findings_prompt_block(self) -> str:
-        findings = self.memory.get_all_findings(limit=15)
+    def _get_findings_prompt_block(self, task_id: str = "global") -> str:
+        findings = self.memory.get_all_findings(limit=15, task_id=task_id)
         if not findings:
             return ""
         items = [f"  - [{f['key']}]: {str(f['value'])[:200]}" for f in findings]
@@ -82,7 +82,9 @@ class BaseAgent:
         tool_descriptions = "\n".join([f"  - {t.name}: {t.description}" for t in self.tools.values()])
         reflections_str = self._get_reflections_prompt_block()
         perf_str = self._get_performance_score_prompt_block()
-        findings_str = self._get_findings_prompt_block()
+        # Use task-scoped findings to avoid cross-scan data leakage
+        task_id = getattr(self, '_current_task_id', 'global')
+        findings_str = self._get_findings_prompt_block(task_id=task_id)
 
         prompt = f"""You are an Elite AI Security Research Agent with access to REAL executable tools and an integrated Auto-Tool Synthesis engine.
 
@@ -451,6 +453,7 @@ When completed:
         context_history = []
         self._step_history = {}
         self._current_target = self._extract_target_from_task(task)
+        self._current_task_id = task_id  # Store for use in _build_prompt() findings scope
         self._safe_print(f"[*] [{agent_name}] Extracted target: {self._current_target}")
         self._consecutive_failures = 0
 
