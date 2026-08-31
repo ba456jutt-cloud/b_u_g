@@ -146,6 +146,40 @@ class MLScanEngine:
                 self._vuln_le = data["label_encoder"]
                 logger.info("[MLScanEngine] ✅ VulnScorer loaded")
 
+            waf_path = os.path.join(MODELS_DIR, "waf_predictor.pkl")
+            if os.path.exists(waf_path):
+                data = joblib.load(waf_path)
+                self._waf_predictor = data["classifier"]
+                self._waf_tfidf = data["tfidf"]
+                self._waf_le = data["label_encoder"]
+                logger.info("[MLScanEngine] ✅ WafPredictor loaded")
+
+            fuzz_path = os.path.join(MODELS_DIR, "web_fuzz_optimizer.pkl")
+            if os.path.exists(fuzz_path):
+                data = joblib.load(fuzz_path)
+                self._fuzz_optimizer = data["classifier"]
+                self._fuzz_tfidf_fw = data["tfidf_fw"]
+                self._fuzz_tfidf_waf = data["tfidf_waf"]
+                self._fuzz_le = data["label_encoder"]
+                logger.info("[MLScanEngine] ✅ WebFuzzOptimizer loaded")
+
+            nuclei_path = os.path.join(MODELS_DIR, "nuclei_tag_selector.pkl")
+            if os.path.exists(nuclei_path):
+                data = joblib.load(nuclei_path)
+                self._nuclei_tag_selector = data["classifier"]
+                self._nuclei_tfidf_svc = data["tfidf_svc"]
+                self._nuclei_le = data["label_encoder"]
+                logger.info("[MLScanEngine] ✅ NucleiTagSelector loaded")
+
+            sql_path = os.path.join(MODELS_DIR, "sqli_tamper_scorer.pkl")
+            if os.path.exists(sql_path):
+                data = joblib.load(sql_path)
+                self._sqli_tamper_scorer = data["classifier"]
+                self._sqli_tfidf_db = data["tfidf_db"]
+                self._sqli_tfidf_waf = data["tfidf_waf"]
+                self._sqli_le = data["label_encoder"]
+                logger.info("[MLScanEngine] ✅ SqliTamperScorer loaded")
+
             self._models_loaded = all([
                 self._fw_detector, self._flag_optimizer,
                 self._svc_classifier, self._vuln_regressor
@@ -247,6 +281,28 @@ class MLScanEngine:
             results["ml_predictions"]["vuln_scores"] = sorted(
                 vuln_scores, key=lambda x: x["score"], reverse=True
             )
+
+            # ── PHASE 6: Multi-Tool Intelligence Predictions ──
+            print(f"[MLScanEngine] Multi-Tool Intelligence Predictions (Gobuster/FFUF, Nuclei, SQLmap, XSS)...")
+            results["ml_predictions"]["waf_tech"] = self._predict_waf_tech(results)
+            results["ml_predictions"]["web_fuzz"] = self._predict_web_fuzz(results)
+            results["ml_predictions"]["nuclei_tags"] = self._predict_nuclei_tags(results)
+            results["ml_predictions"]["sqli_tamper"] = self._predict_sqli_tamper(results)
+
+            # Security ML Integration (Real-time XSS & Target Vuln Prediction)
+            try:
+                from security_ml import SecurityMLModel
+                sec_ml = SecurityMLModel()
+                target_url = f"https://{clean_target}"
+                results["ml_predictions"]["target_risk_analysis"] = sec_ml.predict_target_vuln(target_url)
+                print(f"[MLScanEngine]   → Target Risk Rating: {results['ml_predictions']['target_risk_analysis'].get('overall_risk_level')}")
+            except Exception as e:
+                logger.warning(f"[MLScanEngine] SecurityMLModel prediction skipped: {e}")
+
+            print(f"[MLScanEngine]   → Recommended Fuzzing Tool: {results['ml_predictions']['web_fuzz'].get('recommended_tool', 'gobuster')} "
+                  f"(wordlist: {results['ml_predictions']['web_fuzz'].get('recommended_wordlist', 'common.txt')})")
+            print(f"[MLScanEngine]   → Recommended Nuclei Tags: {results['ml_predictions']['nuclei_tags'].get('recommended_tags', 'cve,panel')}")
+            print(f"[MLScanEngine]   → Recommended SQLmap Tamper: {results['ml_predictions']['sqli_tamper'].get('recommended_tamper', 'none')}")
 
         except Exception as e:
             logger.error(f"[MLScanEngine] Scan error: {e}", exc_info=True)
