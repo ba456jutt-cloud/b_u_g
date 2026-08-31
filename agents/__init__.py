@@ -16,14 +16,15 @@ from .support_agents import EvidenceAgent, DeduplicationAgent, NotificationAgent
 from .patch_generator_agent import PatchGeneratorAgent
 from .poc_agent import PoCVerificationAgent
 from .ctf_solver_agent import CTFSolverAgent
-
 from .initial_discovery_agent import InitialDiscoveryAgent
+from .ml_scan_agent import MLScanAgent
 
 # Aliases
 ToolBuilderAgent = GeneralToolBuilderAgent
 
 ALL_AGENTS = [
     "MasterAgent",
+    "MLScanAgent",
     "InitialDiscoveryAgent",
     "ScopeManagementAgent",
     "PassiveReconAgent",

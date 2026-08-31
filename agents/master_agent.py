@@ -6,9 +6,18 @@ from core.model_router import ModelRouter
 logger = logging.getLogger(__name__)
 
 WORKFLOW_PIPELINES = {
+    "ml_audit": [
+        "MLScanAgent", "ScopeManagementAgent",
+        "WebCrawlingAgent", "JSAnalysisAgent", "ParamDiscoveryAgent",
+        "DirectoryEnumAgent", "VulnerabilityAnalysisAgent",
+        "CVEResearchAgent", "AttackChainAgent", "PatchGeneratorAgent",
+        "EvidenceAgent", "DeduplicationAgent", "ReportAgent"
+    ],
+    "ml_scan": [
+        "MLScanAgent", "VulnerabilityAnalysisAgent", "CVEResearchAgent", "ReportAgent"
+    ],
     "full audit": [
-        "InitialDiscoveryAgent", "ScopeManagementAgent", "PassiveReconAgent", "DNSIntelligenceAgent",
-        "ReconAnalysisAgent", "AliveHostAgent", "PortScanAgent",
+        "MLScanAgent", "ScopeManagementAgent", "PassiveReconAgent", "DNSIntelligenceAgent",
         "WebCrawlingAgent", "JSAnalysisAgent", "ParamDiscoveryAgent",
         "DirectoryEnumAgent", "VulnerabilityAnalysisAgent",
         "CVEResearchAgent", "AttackChainAgent", "PatchGeneratorAgent",
