@@ -376,26 +376,30 @@ def main():
     print("=" * 56)
 
     # ── Load Firewall + Flag data ──────────────────────────
-    fw_path = os.path.join(DATA_DIR, "synthetic_firewall_scans.csv")
+    fw_path = os.path.join(DATA_DIR, "unified_firewall_scans.csv")
     if not os.path.exists(fw_path):
-        print(f"\n❌ Dataset not found: {fw_path}")
-        print("Run first: python scripts/generate_synthetic.py")
-        sys.exit(1)
+        fw_path = os.path.join(DATA_DIR, "synthetic_firewall_scans.csv")
 
     df_fw = pd.read_csv(fw_path)
-    print(f"\n✅ Loaded firewall dataset: {len(df_fw):,} rows")
+    print(f"\n✅ Loaded firewall dataset: {len(df_fw):,} rows ({os.path.basename(fw_path)})")
 
     # ── Load Service data ──────────────────────────────────
-    svc_path = os.path.join(DATA_DIR, "synthetic_service_data.csv")
+    svc_path = os.path.join(DATA_DIR, "unified_service_data.csv")
+    if not os.path.exists(svc_path):
+        svc_path = os.path.join(DATA_DIR, "synthetic_service_data.csv")
+
     df_svc = pd.read_csv(svc_path) if os.path.exists(svc_path) else None
     if df_svc is not None:
-        print(f"✅ Loaded service dataset: {len(df_svc):,} rows")
+        print(f"✅ Loaded service dataset: {len(df_svc):,} rows ({os.path.basename(svc_path)})")
 
     # ── Load Vuln data ─────────────────────────────────────
-    vuln_path = os.path.join(DATA_DIR, "synthetic_vuln_scores.csv")
+    vuln_path = os.path.join(DATA_DIR, "unified_vuln_scores.csv")
+    if not os.path.exists(vuln_path):
+        vuln_path = os.path.join(DATA_DIR, "synthetic_vuln_scores.csv")
+
     df_vuln = pd.read_csv(vuln_path) if os.path.exists(vuln_path) else None
     if df_vuln is not None:
-        print(f"✅ Loaded vuln dataset: {len(df_vuln):,} rows")
+        print(f"✅ Loaded vuln dataset: {len(df_vuln):,} rows ({os.path.basename(vuln_path)})")
 
     # ── Train models ───────────────────────────────────────
     fw_pipe, fw_cols = train_firewall_detector(df_fw)
