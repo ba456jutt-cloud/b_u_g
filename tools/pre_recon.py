@@ -50,7 +50,26 @@ class PreReconEngine:
             if self.ip_address:
                 results["ip_geo"] = self._get_ip_info(self.ip_address)
 
+        # Trigger Stage 1 Deterministic Deep Scan Engine (Ports, Services, OSCP Rules)
+        try:
+            from tools.deep_scan_engine import DeterministicScanningEngine
+            deep_engine = DeterministicScanningEngine(self.raw_target)
+            deep_res = deep_engine.run()
+            results["open_ports"] = deep_res.get("open_ports", [])
+            results["services"] = deep_res.get("services", {})
+            results["enumeration"] = deep_res.get("enumeration", {})
+        except Exception as e:
+            results["deep_scan_error"] = str(e)
+
         self.findings = results
+        
+        # Save consolidated Stage 1 cache to /tmp/discovery_cache.json
+        try:
+            with open("/tmp/discovery_cache.json", "w") as f:
+                json.dump(results, f, indent=2)
+        except Exception:
+            pass
+
         return results
 
     def get_summary_text(self) -> str:
