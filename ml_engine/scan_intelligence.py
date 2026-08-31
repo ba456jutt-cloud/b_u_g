@@ -299,10 +299,16 @@ class MLScanEngine:
             except Exception as e:
                 logger.warning(f"[MLScanEngine] SecurityMLModel prediction skipped: {e}")
 
-            print(f"[MLScanEngine]   → Recommended Fuzzing Tool: {results['ml_predictions']['web_fuzz'].get('recommended_tool', 'gobuster')} "
-                  f"(wordlist: {results['ml_predictions']['web_fuzz'].get('recommended_wordlist', 'common.txt')})")
-            print(f"[MLScanEngine]   → Recommended Nuclei Tags: {results['ml_predictions']['nuclei_tags'].get('recommended_tags', 'cve,panel')}")
-            print(f"[MLScanEngine]   → Recommended SQLmap Tamper: {results['ml_predictions']['sqli_tamper'].get('recommended_tamper', 'none')}")
+            # ── PHASE 7: Overall ML Confidence & Escalation Evaluation ──
+            fw_conf = float(fw_prediction.get("confidence", 0.8)) if isinstance(fw_prediction.get("confidence"), (int, float)) else 0.85
+            results["overall_ml_confidence"] = round(fw_conf, 2)
+            results["requires_agent_escalation"] = results["overall_ml_confidence"] < 0.75
+
+            print(f"\n[MLScanEngine] 📊 Overall ML Confidence Score: {results['overall_ml_confidence'] * 100:.1f}%")
+            if results["requires_agent_escalation"]:
+                print(f"[MLScanEngine] ⚠️  Confidence < 75% — ESCALATING to Cognitive AI Agents for deep analysis!")
+            else:
+                print(f"[MLScanEngine] ⚡ Confidence >= 75% — Fast ML Autonomous Scan Mode active!")
 
         except Exception as e:
             logger.error(f"[MLScanEngine] Scan error: {e}", exc_info=True)
